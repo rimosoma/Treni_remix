@@ -1,67 +1,75 @@
-1. Struttura del Contratto
-Il contratto eredita le seguenti librerie di OpenZeppelin:
+Overview
+Il contratto TrainNFT è progettato per rappresentare treni come token non fungibili (NFT) su Ethereum. 
+Ogni treno è un NFT univoco che contiene informazioni relative ai suoi vagoni. Il contratto gestisce i vagoni in modo automatizzato, 
+assegnando a ciascuno un ID e un codice univoco generato on-chain. 
+Inoltre, il contratto prevede la possibilità di associare documenti TXT (contenenti informazioni sul treno e sui singoli vagoni) tramite IPFS, 
+memorizzando solamente l'hash del documento.
 
-    - ERC721: Standard per i token non fungibili (NFT).
-    - Counters: Permette di gestire in modo sicuro l’assegnazione degli ID ai treni.
-    - AccessControl: Introduce un sistema di ruoli per limitare l’accesso a determinate funzioni (ad esempio, solo un manutentore può aggiornare lo stato di un treno).
+Caratteristiche Principali
+ERC721 Token: Ogni treno è un NFT basato sullo standard ERC721.
+Contatori Globali: Due contatori (uno per i treni e uno per i vagoni) garantiscono che ogni elemento riceva un ID univoco.
+Generazione Automatica dei Codici Vagone: Al momento del minting, per ogni vagone viene generato automaticamente un codice nel formato "WAG-<id>".
+Gestione dei Documenti via IPFS: I documenti TXT relativi a treni e vagoni vengono generati off-chain e caricati su IPFS. Il contratto memorizza solo l'hash IPFS per garantire l'immutabilità e ridurre i costi on-chain.
+Ruoli e Access Control: Il contratto utilizza AccessControl di OpenZeppelin per definire ruoli specifici (ad esempio, il ruolo di manutentore) che possono aggiornare lo stato e i documenti.
+Eventi: Vari eventi sono emessi per tracciare la creazione, l'aggiornamento di stato e l'associazione dei documenti, facilitando l'integrazione con applicazioni esterne.
+Architettura e Flusso Operativo
+1. Minting del Treno e dei Vagoni
+mintTrain(owner, numWagons):
+Input:
+owner: l'indirizzo che riceverà l'NFT del treno.
+numWagons: il numero di vagoni da creare automaticamente.
+Processo:
+Incrementa il contatore dei treni (_tokenIds) e minta un nuovo NFT per il treno.
+Inizializza la struttura TrainData impostando lo stato iniziale ("Operativo") e un documento vuoto.
+Per ogni vagone, incrementa il contatore dei vagoni (_wagonIds), genera un codice univoco nel formato "WAG-<id>" e crea una struttura Wagon con stato predefinito e documento vuoto.
+Aggiunge automaticamente i vagoni creati alla struttura del treno.
+Output: Restituisce l'ID del nuovo treno.
+2. Aggiornamento dello Stato
+updateTrainStatus(trainId, newStatus):
+Aggiorna lo stato operativo di un treno. Questa funzione è accessibile solo a chi possiede il ruolo di manutentore.
 
-Il contratto definisce due ruoli principali:
+updateWagonStatus(trainId, wagonUniqueId, newStatus):
+Aggiorna lo stato operativo di un vagone specifico, identificato dal suo ID univoco.
 
-    - DEFAULT_ADMIN_ROLE: Amministratore con pieno controllo.
-    - MAINTAINER_ROLE: Ruolo per chi può aggiornare lo stato dei treni e aggiungere documenti IPFS.
+3. Associazione dei Documenti (IPFS)
+linkTrainDocument(trainId, ipfsHash):
+Associa o aggiorna il documento TXT del treno tramite l'hash IPFS. L'hash è generato off-chain e passato al contratto.
 
-2. Strutture Dati
-Il contratto utilizza due strutture principali per modellare i treni e i loro vagoni:
+linkWagonDocument(trainId, wagonUniqueId, ipfsHash):
+Associa o aggiorna il documento TXT di un vagone specifico tramite l'hash IPFS.
 
-2.1 Struttura Wagon (Vagone)
-    - Ogni vagone ha:
-        - wagonId: Un identificatore univoco (come un numero di telaio).
-        - status: Lo stato operativo del vagone (es. "Operativo", "InManutenzione").
+getAllWagonDocuments(trainId):
+Restituisce un array contenente tutti gli hash dei documenti associati ai vagoni di un treno.
 
-2.2 Struttura TrainData (Treno)
-    - Ogni treno è rappresentato da:
-        - trainId: ID univoco assegnato al treno.
-        - wagons: Una lista di strutture Wagon, che rappresenta i vagoni del treno.
-        - status: Lo stato operativo generale del treno.
-        - documentHashes: Una lista di hash IPFS per i documenti associati.
+4. Interazione con Sistemi Off-chain
+Poiché la generazione dei file TXT e il caricamento su IPFS devono essere effettuati off-chain:
 
-3. Funzionalità 
-3.1 Creazione di un NFT Treno (mintTrain)   Solo l’amministratore può chiamare questa funzione.
-    - Si incrementa il contatore degli ID per assegnare un ID univoco al treno.
-    - Si crea l’NFT per l’indirizzo proprietario.
-    - Si inizializza la struttura TrainData, assegnando lo stato "Operativo" e copiando la lista dei vagoni ricevuti.
-    - Viene emesso l’evento TrainMinted.
+Sistema Esterno (Node.js, Oracle, etc.):
+Un'applicazione Node.js, utilizzando librerie come Web3.js o Ethers.js, può ascoltare gli eventi emessi dal contratto (ad esempio, l'evento TrainMinted) e, in risposta,:
+Generare automaticamente i file TXT contenenti le informazioni del treno e dei vagoni.
+Caricare questi file su IPFS usando servizi come Pinata o Infura IPFS e ottenere gli hash.
+Chiamare le funzioni linkTrainDocument e linkWagonDocument per aggiornare il contratto con gli hash ottenuti.
+Questo meccanismo permette una completa automazione e tracciabilità, garantendo che ogni elemento (treno o vagone) sia associato al proprio documento.
 
-3.2 Aggiornamento dello stato di un treno (updateTrainStatus)   Solo un manutentore può chiamare questa funzione.
-    - Verifica che il treno esista.
-    - Aggiorna lo stato del treno (es. "InManutenzione", "Fuori Servizio").
-    - Emissione dell’evento StatusUpdated.
+Dettagli Tecnici
+Librerie Utilizzate:
 
-3.3 Aggiornamento dello stato di un vagone (updateWagonStatus)
-    - Controlla che il treno esista.
-    - Cerca il vagone nella lista.
-    - Se lo trova, ne aggiorna lo stato e genera l’evento WagonStatusUpdated.
-    - Se il vagone non esiste, restituisce un errore.
+ERC721: Standard per NFT.
+Counters: Per generare ID univoci in modo sicuro.
+Strings: Per convertire numeri (ID) in stringa, utili per generare codici univoci.
+AccessControl: Per gestire i ruoli e limitare l'accesso alle funzioni sensibili.
+Contatori Globali:
 
-3.4 Aggiunta di un documento IPFS (linkDocument)    Solo un manutentore può chiamare questa funzione.
-    - Verifica che il treno esista.
-    - Aggiunge l’hash del documento IPFS all’array documentHashes.
-    - Genera l’evento DocumentLinked.
-    - Questo permette di tracciare manutenzioni, guasti e aggiornamenti con un metodo efficiente e scalabile, senza salvare direttamente i file sulla blockchain.
+_tokenIds: Assegna ID unici ai treni.
+_wagonIds: Assegna ID unici assoluti a ogni vagone, garantendo unicità anche tra treni differenti.
+Ruoli:
 
-3.5 Lettura dei dati di un treno (getTrainData) Chiunque può chiamare questa funzione per ottenere i dati di un treno, inclusi:
+DEFAULT_ADMIN_ROLE: Ruolo di amministratore, assegnato all'indirizzo specificato nel costruttore.
+MAINTAINER_ROLE: Ruolo che consente di aggiornare stati e documenti di treni e vagoni.
+Vantaggi e Considerazioni
+Efficienza dei Costi: Salvare solo l'hash del documento su-chain riduce il costo del gas rispetto a memorizzare interi file.
+Scalabilità: La logica di minting e aggiornamento è pensata per essere scalabile, con gestione automatizzata degli ID e dei codici.
+Integrazione Off-chain: L'approccio basato su eventi permette una stretta integrazione con applicazioni esterne, garantendo che i documenti vengano generati e associati in modo automatizzato.
+Conclusioni
+Il contratto TrainNFT offre una soluzione completa per rappresentare treni e vagoni come NFT, automatizzando la generazione degli ID e facilitando la gestione dei documenti tramite IPFS. La separazione tra logica on-chain e operazioni off-chain consente di sfruttare i vantaggi della blockchain (sicurezza e trasparenza) mantenendo al contempo l'efficienza dei costi e la flessibilità nell'integrazione con sistemi esterni.
 
-L'ID del treno.
-I vagoni e i loro stati.
-Lo stato operativo del treno.
-Gli hash dei documenti IPFS collegati.
-4. Sicurezza ed Efficienza
-    - Uso degli NFT: Un ID unico per ogni treno, garantendo autenticità e proprietà verificabili sulla blockchain.
-    - Uso degli hash IPFS: Minimizza i costi di archiviazione sulla blockchain, registrando solo riferimenti immutabili ai documenti off-chain.
-    - Ruoli di accesso: Solo utenti con permessi specifici possono modificare lo stato dei treni e aggiungere documenti.
-
-
-
-Questo contratto fornisce una soluzione trasparente e scalabile per la gestione dei treni, 
-con un tracciamento sicuro degli aggiornamenti di stato e della documentazione, 
-bilanciando sicurezza, costi e praticità. 
